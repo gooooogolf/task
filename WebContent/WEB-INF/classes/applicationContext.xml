@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" 
+       	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       	xmlns:p="http://www.springframework.org/schema/p" 
+       	xmlns:tx="http://www.springframework.org/schema/tx"
+       	xmlns:context="http://www.springframework.org/schema/context"
+       	xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+       	xmlns:mvc="http://www.springframework.org/schema/mvc" 
+       	xmlns:jpa="http://www.springframework.org/schema/data/jpa"
+       	xmlns:util="http://www.springframework.org/schema/util"
+       	xmlns:aop="http://www.springframework.org/schema/aop"
+       	xmlns:security="http://www.springframework.org/schema/security"
+       	xsi:schemaLocation="
+			http://www.springframework.org/schema/beans 
+			http://www.springframework.org/schema/beans/spring-beans.xsd
+			http://www.springframework.org/schema/tx 
+			http://www.springframework.org/schema/tx/spring-tx.xsd
+			http://www.springframework.org/schema/context
+			http://www.springframework.org/schema/context/spring-context.xsd
+			http://www.springframework.org/schema/jdbc 
+			http://www.springframework.org/schema/jdbc/spring-jdbc.xsd
+			http://www.springframework.org/schema/data/jpa
+   			http://www.springframework.org/schema/data/jpa/spring-jpa.xsd
+			http://www.springframework.org/schema/util 
+			http://www.springframework.org/schema/util/spring-util.xsd
+			http://www.springframework.org/schema/mvc
+        	http://www.springframework.org/schema/mvc/spring-mvc.xsd
+        	http://www.springframework.org/schema/aop 
+			http://www.springframework.org/schema/aop/spring-aop.xsd
+			http://www.springframework.org/schema/security
+   			http://www.springframework.org/schema/security/spring-security.xsd">
+			
+	
+	<context:property-placeholder location="classpath:project.properties" ignore-unresolvable="true"/>
+	<mvc:annotation-driven />
+	<context:component-scan base-package="com.jsoft" />
+	<mvc:resources mapping="/resources/**" location="/resources/" /> 
+	
+		<!-- Configure the multipart resolver -->
+    <bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver" p:maxUploadSize="1000000"/>
+	
+    <bean class="org.springframework.web.servlet.view.json.MappingJacksonJsonView" p:extractValueFromSingleKeyModel="true" />
+
+	<!-- Enable annotation style of managing transactions -->	
+	<tx:annotation-driven transaction-manager="transactionManager" />	
+	
+	<!-- For parsing classes with @Aspect annotation -->
+	<aop:aspectj-autoproxy/>
+
+	<bean id="customizableTraceInterceptor" class="com.jsoft.aop.TraceInterceptor"
+		p:enterMessage="Entering $[targetClassShortName].$[methodName]($[arguments])"
+		p:exitMessage="Leaving $[targetClassShortName].$[methodName](): $[returnValue]"/>
+
+	<aop:config>
+	  <aop:advisor advice-ref="customizableTraceInterceptor" pointcut="execution(public * com.jsoft.service..*(..))"/>
+	  <aop:advisor advice-ref="customizableTraceInterceptor" pointcut="execution(public * com.jsoft.controller..*(..))"/>
+	</aop:config>
+  	
+	<!-- Declare a datasource that has pooling capabilities-->	 
+	<bean id="sqlDataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource"
+				destroy-method="close"
+				p:driverClass="${sql.driverClassName}"
+				p:jdbcUrl="${sql.url}"
+				p:user="${sql.username}"
+				p:password="${sql.password}"
+				p:acquireIncrement="5"
+				p:idleConnectionTestPeriod="600"
+				p:maxPoolSize="10"
+				p:maxStatements="50"
+				p:minPoolSize="5" />
+				
+	<bean id="sessionFactory" class="org.springframework.orm.hibernate3.annotation.AnnotationSessionFactoryBean">
+		<property name="dataSource" ref="sqlDataSource" />
+		<property name="packagesToScan" value="com.jsoft.model"/>
+		<property name="hibernateProperties">
+			<props>
+<!-- 				<prop key="hibernate.connection.pool_size">${hibernate.connection.pool_size}</prop> -->
+				<prop key="hibernate.dialect">${sql.dialect}</prop>
+				<prop key="hibernate.show_sql">false</prop>
+				<prop key="hibernate.hbm2ddl.auto">update</prop>
+			</props>
+		</property>
+	</bean>
+	
+	<bean id="transactionManager" class="org.springframework.orm.hibernate3.HibernateTransactionManager">
+		<property name="sessionFactory" ref="sessionFactory" />
+	</bean>
+	<security:http pattern="/resources/**" security="none" />   
+	
+	<security:http auto-config="false" use-expressions="true">
+		<security:intercept-url pattern="/login**" access="permitAll"/>
+<!-- 		<security:intercept-url pattern="/*" access="hasRole('ROLE_USER')"/> -->
+<!-- 		<security:intercept-url pattern="/users/**" access="hasRole('ROLE_ADMIN')"/> -->
+<!-- 		ต้องเรียง sequence url pattern เสมอ -->
+		<security:intercept-url pattern="/users/**" access="hasRole('ROLE_ADMIN')"/>
+		<security:intercept-url pattern="/**" access="isAuthenticated()"/>
+		<security:form-login login-page="/login" default-target-url="/" authentication-failure-url="/login-error" />
+		<security:access-denied-handler error-page="/403" />
+		<security:logout logout-success-url="/login-success" />		
+	</security:http>
+	
+	<security:authentication-manager>
+		<security:authentication-provider user-service-ref="customUserDetailsService">
+			<security:password-encoder hash="plaintext" />
+		</security:authentication-provider>
+	</security:authentication-manager>	    
+</beans>
